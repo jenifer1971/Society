@@ -1,14 +1,54 @@
 services:
+
+  # ── Self-hosted Zep memory store ──────────────────────────────────────────
+  # Agent memories never leave your infrastructure.
+  # Zep Community Edition requires no API key when self-hosted.
+  zep:
+    image: ghcr.io/getzep/zep:latest
+    container_name: zep
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ZEP_STORE_TYPE=postgres
+      - ZEP_STORE_POSTGRES_DSN=postgresql://zep:zep@zep-db:5432/zep
+    depends_on:
+      zep-db:
+        condition: service_healthy
+
+  zep-db:
+    image: postgres:16-alpine
+    container_name: zep-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zep
+      POSTGRES_PASSWORD: zep
+      POSTGRES_DB: zep
+    volumes:
+      - zep_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zep"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── MiroFish application ───────────────────────────────────────────────────
   mirofish:
-    image: ghcr.io/666ghj/mirofish:latest
-    # 加速镜像（如拉取缓慢可替换上方地址）
-    # image: ghcr.nju.edu.cn/666ghj/mirofish:latest
+    build: .
     container_name: mirofish
+    restart: unless-stopped
     env_file:
       - .env
+    environment:
+      # Point Zep at the local container — overrides anything in .env
+      - ZEP_BASE_URL=http://zep:8000
     ports:
       - "3000:3000"
       - "5001:5001"
-    restart: unless-stopped
     volumes:
       - ./backend/uploads:/app/backend/uploads
+    depends_on:
+      - zep
+
+volumes:
+  zep_postgres_data:

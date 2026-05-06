@@ -7,7 +7,7 @@ import time
 from typing import Dict, Any, List, Optional, Set, Callable, TypeVar
 from dataclasses import dataclass, field
 
-from zep_cloud.client import Zep
+from zep_python.client import Zep
 
 from ..config import Config
 from ..utils.logger import get_logger
@@ -78,12 +78,11 @@ class ZepEntityReader:
     3. 获取每个实体的相关边和关联节点信息
     """
     
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or Config.ZEP_API_KEY
-        if not self.api_key:
-            raise ValueError("ZEP_API_KEY 未配置")
-        
-        self.client = Zep(api_key=self.api_key)
+    def __init__(self, base_url: Optional[str] = None):
+        self.base_url = base_url or Config.ZEP_BASE_URL
+        if not self.base_url:
+            raise ValueError("ZEP_BASE_URL is not set")
+        self.client = Zep(base_url=self.base_url)
     
     def _call_with_retry(
         self, 

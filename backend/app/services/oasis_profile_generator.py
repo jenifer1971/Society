@@ -15,12 +15,12 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from openai import OpenAI
-from zep_cloud.client import Zep
+from zep_python.client import Zep
 
 from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, get_locale, set_locale, t
+from ..utils.llm_client import LLMClient
 from .zep_entity_reader import EntityNode, ZepEntityReader
 
 logger = get_logger('mirofish.oasis_profile')
@@ -179,35 +179,27 @@ class OasisProfileGenerator:
     ]
     
     def __init__(
-        self, 
+        self,
+        model_name: Optional[str] = None,
+        zep_base_url: Optional[str] = None,
+        graph_id: Optional[str] = None,
+        # Legacy params kept for call-site compatibility but ignored
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
-        model_name: Optional[str] = None,
         zep_api_key: Optional[str] = None,
-        graph_id: Optional[str] = None
     ):
-        self.api_key = api_key or Config.LLM_API_KEY
-        self.base_url = base_url or Config.LLM_BASE_URL
-        self.model_name = model_name or Config.LLM_MODEL_NAME
-        
-        if not self.api_key:
-            raise ValueError("LLM_API_KEY 未配置")
-        
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url
-        )
-        
-        # Zep客户端用于检索丰富上下文
-        self.zep_api_key = zep_api_key or Config.ZEP_API_KEY
+        self.client = LLMClient(model=model_name)
+        self.model_name = model_name  # kept for logging only
+
+        zep_url = zep_base_url or Config.ZEP_BASE_URL
         self.zep_client = None
         self.graph_id = graph_id
-        
-        if self.zep_api_key:
+
+        if zep_url:
             try:
-                self.zep_client = Zep(api_key=self.zep_api_key)
+                self.zep_client = Zep(base_url=zep_url)
             except Exception as e:
-                logger.warning(f"Zep客户端初始化失败: {e}")
+                logger.warning(f"Zep client init failed: {e}")
     
     def generate_profile_from_entity(
         self, 
@@ -527,24 +519,14 @@ class OasisProfileGenerator:
         
         for attempt in range(max_attempts):
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
+                content = self.client.chat(
                     messages=[
                         {"role": "system", "content": self._get_system_prompt(is_individual)},
                         {"role": "user", "content": prompt}
                     ],
                     response_format={"type": "json_object"},
-                    temperature=0.7 - (attempt * 0.1)  # 每次重试降低温度
-                    # 不设置max_tokens，让LLM自由发挥
+                    temperature=0.7 - (attempt * 0.1),
                 )
-                
-                content = response.choices[0].message.content
-                
-                # 检查是否被截断（finish_reason不是'stop'）
-                finish_reason = response.choices[0].finish_reason
-                if finish_reason == 'length':
-                    logger.warning(f"LLM输出被截断 (attempt {attempt+1}), 尝试修复...")
-                    content = self._fix_truncated_json(content)
                 
                 # 尝试解析JSON
                 try:

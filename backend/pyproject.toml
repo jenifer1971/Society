@@ -13,11 +13,13 @@ dependencies = [
     "flask>=3.0.0",
     "flask-cors>=6.0.0",
     
-    # LLM 相关
+    # LLM providers
     "openai>=1.0.0",
-    
-    # Zep Cloud
-    "zep-cloud==3.13.0",
+    "anthropic>=0.28.0",
+    "boto3>=1.34.0",
+
+    # Zep self-hosted memory
+    "zep-python>=2.0.0",
     
     # OASIS 社交媒体模拟
     "camel-oasis==0.2.5",
