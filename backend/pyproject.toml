@@ -15,8 +15,6 @@ dependencies = [
     
     # LLM providers
     "openai>=1.0.0",
-    "anthropic>=0.28.0",
-    "boto3>=1.34.0",
 
     # PostgreSQL + pgvector — knowledge graph & agent memory
     "psycopg2-binary>=2.9.0",

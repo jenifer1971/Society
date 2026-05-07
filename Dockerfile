@@ -21,8 +21,9 @@ RUN npm ci && npm ci --prefix frontend
 RUN cd backend && \
     uv export --frozen --no-dev --no-hashes --no-emit-project \
         | grep -Ev '^(nvidia-|triton)' > /tmp/requirements.txt && \
-    pip install -r /tmp/requirements.txt && \
-    pip install -e .
+    pip install --no-cache-dir -r /tmp/requirements.txt && \
+    pip install --no-cache-dir -e . && \
+    pip cache purge
 
 COPY . .
 
