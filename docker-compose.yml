@@ -12,6 +12,7 @@ services:
     environment:
       - ZEP_STORE_TYPE=postgres
       - ZEP_STORE_POSTGRES_DSN=postgresql://zep:zep@zep-db:5432/zep
+      - ZEP_OPENAI_API_KEY=${ZEP_OPENAI_API_KEY}
     depends_on:
       zep-db:
         condition: service_healthy
