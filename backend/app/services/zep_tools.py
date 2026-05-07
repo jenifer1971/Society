@@ -512,7 +512,8 @@ class ZepToolsService:
         include_expired: bool = False,
     ) -> SearchResult:
         """
-        Hybrid search: vector similarity (pgvector) merged with keyword matching.
+        Hybrid search: vector similarity (pgvector) merged with keyword matching,
+        with optional LLM reranking as a third pass.
 
         Strategy:
         1. If embeddings are available for this provider, run a cosine-similarity
@@ -520,6 +521,8 @@ class ZepToolsService:
         2. Always also run keyword matching (catches exact names, numbers, codes).
         3. Merge both result sets using Reciprocal Rank Fusion (RRF) so neither
            dominates — conceptual matches and exact matches both surface.
+        4. If ENABLE_LLM_RERANKING=true, send the top candidates to the LLM for
+           a final relevance pass (replaces Zep's cross-encoder model).
 
         Falls back to keyword-only when the provider has no embedding model
         (e.g. Anthropic) or when no embeddings have been generated yet.
@@ -540,13 +543,84 @@ class ZepToolsService:
             edges_out, facts = self._search_edges(
                 graph_id, query, query_vec, limit, include_expired=include_expired
             )
+            if Config.ENABLE_LLM_RERANKING and edges_out:
+                edges_out = self._llm_rerank(query, edges_out, text_field="fact")
+                facts = [r["fact"] for r in edges_out if r.get("fact")]
 
         if scope in ("nodes", "both"):
             nodes_out, node_facts = self._search_nodes(graph_id, query, query_vec, limit)
+            if Config.ENABLE_LLM_RERANKING and nodes_out:
+                nodes_out = self._llm_rerank(query, nodes_out, text_field="summary")
+                node_facts = [f"[{r['name']}]: {r['summary']}" for r in nodes_out if r.get("summary")]
             facts.extend(node_facts)
 
         logger.info(t("console.searchComplete", count=len(facts)))
         return SearchResult(facts=facts, edges=edges_out, nodes=nodes_out, query=query, total_count=len(facts))
+
+    def _llm_rerank(
+        self,
+        query: str,
+        candidates: List[Dict[str, Any]],
+        text_field: str = "fact",
+    ) -> List[Dict[str, Any]]:
+        """
+        Re-score the RRF-merged candidate list with one LLM call and return
+        results in descending relevance order.
+
+        Replaces Zep's cross-encoder model.  Capped at 20 candidates to keep
+        the prompt small; items beyond the cap are appended unchanged.
+        Falls back to the original order on any error.
+        """
+        if not candidates:
+            return candidates
+
+        cap = min(len(candidates), 20)
+        to_rank = candidates[:cap]
+
+        numbered = "\n".join(
+            f"[{i}] {c.get(text_field) or c.get('name') or ''}"
+            for i, c in enumerate(to_rank)
+        )
+        user_prompt = (
+            f"Query: {query}\n\n"
+            f"Candidates:\n{numbered}\n\n"
+            "Return ONLY valid JSON — no prose, no markdown:\n"
+            '{"ranked": [<indices in descending relevance order, include all>]}'
+        )
+        try:
+            result = self.llm.chat_json(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a relevance-ranking assistant. "
+                            "Given a search query and a numbered list of text items, "
+                            "return all item indices sorted from most to least relevant."
+                        ),
+                    },
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.0,
+            )
+            ranked_indices = result.get("ranked", [])
+            if not isinstance(ranked_indices, list):
+                return candidates
+
+            seen: set = set()
+            reranked: List[Dict[str, Any]] = []
+            for idx in ranked_indices:
+                if isinstance(idx, int) and 0 <= idx < len(to_rank) and idx not in seen:
+                    reranked.append(to_rank[idx])
+                    seen.add(idx)
+            for idx, item in enumerate(to_rank):
+                if idx not in seen:
+                    reranked.append(item)
+            reranked.extend(candidates[cap:])
+            logger.debug(f"LLM reranking applied to {len(to_rank)} candidates")
+            return reranked
+        except Exception as e:
+            logger.debug(f"LLM reranking failed, using original order: {e}")
+            return candidates
 
     def _search_edges(
         self,

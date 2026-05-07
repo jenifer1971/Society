@@ -109,6 +109,14 @@ class Config:
     # ---------------------------------------------------------------------------
     ENABLE_TEMPORAL_TRACKING = os.environ.get('ENABLE_TEMPORAL_TRACKING', 'false').lower() == 'true'
 
+    # ---------------------------------------------------------------------------
+    # LLM reranking — after hybrid vector+keyword search (RRF), sends the top
+    # candidates to the LLM for a final relevance pass (replaces Zep's
+    # cross-encoder model).  Costs one extra LLM call per search; disabled by
+    # default.
+    # ---------------------------------------------------------------------------
+    ENABLE_LLM_RERANKING = os.environ.get('ENABLE_LLM_RERANKING', 'false').lower() == 'true'
+
     @classmethod
     def validate(cls):
         """Validate that the selected provider is fully configured."""
