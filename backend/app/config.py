@@ -102,6 +102,13 @@ class Config:
     REPORT_AGENT_MAX_REFLECTION_ROUNDS = int(os.environ.get('REPORT_AGENT_MAX_REFLECTION_ROUNDS', '2'))
     REPORT_AGENT_TEMPERATURE = float(os.environ.get('REPORT_AGENT_TEMPERATURE', '0.5'))
 
+    # ---------------------------------------------------------------------------
+    # Temporal fact tracking — detects when new agent activities contradict
+    # existing graph edges and marks old facts as invalid.
+    # Costs one extra LLM call per activity batch; disabled by default.
+    # ---------------------------------------------------------------------------
+    ENABLE_TEMPORAL_TRACKING = os.environ.get('ENABLE_TEMPORAL_TRACKING', 'false').lower() == 'true'
+
     @classmethod
     def validate(cls):
         """Validate that the selected provider is fully configured."""

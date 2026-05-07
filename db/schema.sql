@@ -43,7 +43,10 @@ CREATE TABLE IF NOT EXISTS graph_edges (
     target_node_id   UUID        REFERENCES graph_nodes(id) ON DELETE CASCADE,
     source_node_name TEXT,
     target_node_name TEXT,
-    valid_at         TIMESTAMPTZ,
+    -- valid_at defaults to creation time — every fact is valid from when it was extracted.
+    -- invalid_at is set by the temporal tracker when the fact is contradicted.
+    -- expired_at can be set to mark facts that are true but no longer relevant.
+    valid_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     invalid_at       TIMESTAMPTZ,
     expired_at       TIMESTAMPTZ,
     -- 768-dim embedding of the fact sentence — used for semantic similarity search.
@@ -68,6 +71,7 @@ CREATE TABLE IF NOT EXISTS graph_episodes (
     graph_id    TEXT        NOT NULL REFERENCES graphs(id) ON DELETE CASCADE,
     content     TEXT        NOT NULL,
     platform    TEXT,
+    round_num   INTEGER     NOT NULL DEFAULT 0,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

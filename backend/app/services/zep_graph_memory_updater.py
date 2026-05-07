@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from queue import Queue, Empty
 
+from ..config import Config
 from ..db import get_conn
 from ..utils.logger import get_logger
 from ..utils.locale import get_locale, set_locale
@@ -184,6 +185,16 @@ class ZepGraphMemoryUpdater:
         self._failed_count = 0
         self._skipped_count = 0
 
+        # Temporal tracking — activated via ENABLE_TEMPORAL_TRACKING=true
+        self._temporal_tracker = None
+        if Config.ENABLE_TEMPORAL_TRACKING:
+            try:
+                from .temporal_tracker import TemporalTracker
+                self._temporal_tracker = TemporalTracker()
+                logger.info(f"Temporal tracking enabled for graph {graph_id}")
+            except Exception as e:
+                logger.warning(f"Temporal tracker init failed: {e}")
+
     def start(self):
         if self._running:
             return
@@ -248,12 +259,15 @@ class ZepGraphMemoryUpdater:
         if not activities:
             return
         combined = "\n".join(a.to_episode_text() for a in activities)
+        round_num = activities[-1].round_num if activities else 0
+
         try:
             with get_conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "INSERT INTO graph_episodes (graph_id, content, platform) VALUES (%s, %s, %s)",
-                        (self.graph_id, combined, platform),
+                        """INSERT INTO graph_episodes (graph_id, content, platform, round_num)
+                           VALUES (%s, %s, %s, %s)""",
+                        (self.graph_id, combined, platform, round_num),
                     )
             self._total_sent += 1
             self._total_items_sent += len(activities)
@@ -262,6 +276,17 @@ class ZepGraphMemoryUpdater:
         except Exception as e:
             logger.error(f"Failed to store batch: {e}")
             self._failed_count += 1
+            return
+
+        # Temporal tracking — runs in background, never blocks simulation
+        if self._temporal_tracker is not None:
+            import threading
+            threading.Thread(
+                target=self._temporal_tracker.process_activity_batch,
+                args=(self.graph_id, combined, round_num),
+                daemon=True,
+                name=f"TemporalTracker-{self.graph_id[:8]}-r{round_num}",
+            ).start()
 
     def _flush_remaining(self):
         while not self._activity_queue.empty():

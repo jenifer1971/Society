@@ -509,6 +509,7 @@ class ZepToolsService:
         query: str,
         limit: int = 10,
         scope: str = "edges",
+        include_expired: bool = False,
     ) -> SearchResult:
         """
         Hybrid search: vector similarity (pgvector) merged with keyword matching.
@@ -522,6 +523,10 @@ class ZepToolsService:
 
         Falls back to keyword-only when the provider has no embedding model
         (e.g. Anthropic) or when no embeddings have been generated yet.
+
+        By default only ACTIVE facts are returned (invalid_at IS NULL AND
+        expired_at IS NULL).  Pass include_expired=True to include historical
+        facts (used by panorama_search).
         """
         logger.info(t("console.graphSearch", graphId=graph_id, query=query[:50]))
 
@@ -532,7 +537,9 @@ class ZepToolsService:
         nodes_out: List[Dict[str, Any]] = []
 
         if scope in ("edges", "both"):
-            edges_out, facts = self._search_edges(graph_id, query, query_vec, limit)
+            edges_out, facts = self._search_edges(
+                graph_id, query, query_vec, limit, include_expired=include_expired
+            )
 
         if scope in ("nodes", "both"):
             nodes_out, node_facts = self._search_nodes(graph_id, query, query_vec, limit)
@@ -547,8 +554,12 @@ class ZepToolsService:
         query: str,
         query_vec: Optional[List[float]],
         limit: int,
+        include_expired: bool = False,
     ):
         """Return (edges_list, facts_list) using RRF of vector + keyword."""
+        # Temporal filter: by default only return currently-valid facts
+        temporal_filter = "" if include_expired else "AND invalid_at IS NULL AND expired_at IS NULL"
+
         # ── Vector search ──────────────────────────────────────────────────────
         vec_rows: List[Dict] = []
         if query_vec:
@@ -556,11 +567,12 @@ class ZepToolsService:
                 with get_conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
-                            """SELECT id, name, fact, source_node_id, target_node_id,
+                            f"""SELECT id, name, fact, source_node_id, target_node_id,
                                       source_node_name, target_node_name,
                                       (embedding <=> %s::vector) AS distance
                                FROM graph_edges
                                WHERE graph_id = %s AND embedding IS NOT NULL
+                                 {temporal_filter}
                                ORDER BY embedding <=> %s::vector
                                LIMIT %s""",
                             (_vec_str(query_vec), graph_id, _vec_str(query_vec), limit * 2),
@@ -585,7 +597,10 @@ class ZepToolsService:
         keywords = [w.strip() for w in query.lower().replace(',', ' ').replace('，', ' ').split() if len(w.strip()) > 1]
         kw_rows: List[Dict] = []
         try:
-            all_edges = self.get_all_edges(graph_id)
+            all_edges = self.get_all_edges(graph_id, include_temporal=True)
+            # Apply same temporal filter as vector search
+            if not include_expired:
+                all_edges = [e for e in all_edges if not e.is_expired and not e.is_invalid]
             scored = [
                 (self._kw_score(e.fact + " " + e.name, query.lower(), keywords), e)
                 for e in all_edges
