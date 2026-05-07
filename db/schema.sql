@@ -20,11 +20,18 @@ CREATE TABLE IF NOT EXISTS graph_nodes (
     labels      JSONB       NOT NULL DEFAULT '["Entity"]',
     summary     TEXT        NOT NULL DEFAULT '',
     attributes  JSONB       NOT NULL DEFAULT '{}',
+    -- 768-dim embedding of "name. summary" — populated by graph_builder using
+    -- the enterprise's configured LLM provider embedding API.
+    -- NULL when the provider has no embedding model (e.g. Anthropic).
+    embedding   vector(768),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_graph_nodes_graph_id  ON graph_nodes(graph_id);
 CREATE INDEX IF NOT EXISTS idx_graph_nodes_name       ON graph_nodes(graph_id, name);
+-- IVFFlat index for fast approximate nearest-neighbour search on nodes
+CREATE INDEX IF NOT EXISTS idx_graph_nodes_embedding
+    ON graph_nodes USING ivfflat (embedding vector_cosine_ops) WITH (lists = 50);
 
 -- ── Edges (relationships between entities) ────────────────────────────────────
 CREATE TABLE IF NOT EXISTS graph_edges (
@@ -39,6 +46,8 @@ CREATE TABLE IF NOT EXISTS graph_edges (
     valid_at         TIMESTAMPTZ,
     invalid_at       TIMESTAMPTZ,
     expired_at       TIMESTAMPTZ,
+    -- 768-dim embedding of the fact sentence — used for semantic similarity search.
+    embedding        vector(768),
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -46,9 +55,12 @@ CREATE INDEX IF NOT EXISTS idx_graph_edges_graph_id  ON graph_edges(graph_id);
 CREATE INDEX IF NOT EXISTS idx_graph_edges_source    ON graph_edges(source_node_id);
 CREATE INDEX IF NOT EXISTS idx_graph_edges_target    ON graph_edges(target_node_id);
 
--- Full-text search index on facts
+-- Full-text search index on facts (keyword fallback / Anthropic users)
 CREATE INDEX IF NOT EXISTS idx_graph_edges_fact_fts
     ON graph_edges USING gin(to_tsvector('simple', fact));
+-- IVFFlat index for fast approximate nearest-neighbour search on edges
+CREATE INDEX IF NOT EXISTS idx_graph_edges_embedding
+    ON graph_edges USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 -- ── Episodes (agent activity logs written during simulation) ──────────────────
 CREATE TABLE IF NOT EXISTS graph_episodes (

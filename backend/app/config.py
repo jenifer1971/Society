@@ -65,6 +65,15 @@ class Config:
     )
 
     # ---------------------------------------------------------------------------
+    # Embeddings — reuses the same provider + key as the LLM.
+    # Azure users: set AZURE_EMBEDDING_DEPLOYMENT to their embedding deployment name.
+    # Ollama users: set OLLAMA_EMBEDDING_MODEL (default: nomic-embed-text).
+    # Anthropic users: no embedding model available — search falls back to keyword.
+    # ---------------------------------------------------------------------------
+    AZURE_EMBEDDING_DEPLOYMENT = os.environ.get('AZURE_EMBEDDING_DEPLOYMENT', 'text-embedding-3-small')
+    OLLAMA_EMBEDDING_MODEL = os.environ.get('OLLAMA_EMBEDDING_MODEL', 'nomic-embed-text')
+
+    # ---------------------------------------------------------------------------
     # File upload
     # ---------------------------------------------------------------------------
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50 MB

@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from ..config import Config
 from ..db import get_conn
+from ..embedding import EmbeddingClient, _vec_str
 from ..models.task import TaskManager, TaskStatus
 from ..utils.llm_client import LLMClient
 from .text_processor import TextProcessor
@@ -55,12 +56,19 @@ class GraphBuilderService:
         # base_url / api_key kept for signature compatibility — not used
         self.task_manager = TaskManager()
         self._llm: Optional[LLMClient] = None
+        self._embedder: Optional[EmbeddingClient] = None
 
     @property
     def llm(self) -> LLMClient:
         if self._llm is None:
             self._llm = LLMClient()
         return self._llm
+
+    @property
+    def embedder(self) -> EmbeddingClient:
+        if self._embedder is None:
+            self._embedder = EmbeddingClient()
+        return self._embedder
 
     # ── Public async entry point ───────────────────────────────────────────────
 
@@ -258,17 +266,36 @@ Text to analyze:
         """Store extracted entities and relationships in postgres. Returns episode id."""
         episode_id = str(uuid.uuid4())
 
+        # ── Pre-generate embeddings outside the DB transaction ─────────────────
+        # Batch all texts that need embedding to minimise API round-trips.
+        entities = extraction.get("entities", [])
+        relationships = extraction.get("relationships", [])
+
+        node_embed_texts = [
+            f"{(e.get('name') or '').strip()}. {(e.get('summary') or '').strip()}"
+            for e in entities if (e.get("name") or "").strip()
+        ]
+        edge_embed_texts = [
+            (r.get("fact") or "").strip()
+            for r in relationships if (r.get("source") or "").strip() and (r.get("target") or "").strip()
+        ]
+
+        node_embeddings = self.embedder.embed_batch(node_embed_texts) if node_embed_texts else []
+        edge_embeddings = self.embedder.embed_batch(edge_embed_texts) if edge_embed_texts else []
+
+        # ── Persist ────────────────────────────────────────────────────────────
+        node_emb_idx = 0
+        edge_emb_idx = 0
+
         with get_conn() as conn:
             with conn.cursor() as cur:
-                # Store the raw text as an episode
                 cur.execute(
                     "INSERT INTO graph_episodes (id, graph_id, content) VALUES (%s, %s, %s)",
                     (episode_id, graph_id, chunk),
                 )
 
-                # Upsert entities → collect name→uuid mapping
                 node_map: Dict[str, str] = {}
-                for ent in extraction.get("entities", []):
+                for ent in entities:
                     name = (ent.get("name") or "").strip()
                     etype = (ent.get("type") or "Entity").strip()
                     summary = (ent.get("summary") or "").strip()
@@ -276,8 +303,9 @@ Text to analyze:
                         continue
 
                     labels = json.dumps(["Entity", etype] if etype != "Entity" else ["Entity"])
+                    emb = node_embeddings[node_emb_idx] if node_emb_idx < len(node_embeddings) else None
+                    node_emb_idx += 1
 
-                    # Check if node already exists for this graph
                     cur.execute(
                         "SELECT id FROM graph_nodes WHERE graph_id = %s AND name = %s",
                         (graph_id, name),
@@ -285,22 +313,27 @@ Text to analyze:
                     existing = cur.fetchone()
                     if existing:
                         node_id = str(existing[0])
-                        if summary:
+                        # Update summary and embedding if we have them
+                        if summary or emb:
                             cur.execute(
-                                "UPDATE graph_nodes SET summary = %s WHERE id = %s",
-                                (summary, node_id),
+                                """UPDATE graph_nodes
+                                      SET summary = COALESCE(NULLIF(%s,''), summary),
+                                          embedding = COALESCE(%s::vector, embedding)
+                                    WHERE id = %s""",
+                                (summary, _vec_str(emb) if emb else None, node_id),
                             )
                     else:
                         node_id = str(uuid.uuid4())
                         cur.execute(
-                            """INSERT INTO graph_nodes (id, graph_id, name, labels, summary)
-                               VALUES (%s, %s, %s, %s, %s)""",
-                            (node_id, graph_id, name, labels, summary),
+                            """INSERT INTO graph_nodes
+                                   (id, graph_id, name, labels, summary, embedding)
+                               VALUES (%s, %s, %s, %s, %s, %s)""",
+                            (node_id, graph_id, name, labels, summary,
+                             _vec_str(emb) if emb else None),
                         )
                     node_map[name.lower()] = node_id
 
-                # Insert relationships
-                for rel in extraction.get("relationships", []):
+                for rel in relationships:
                     src_name = (rel.get("source") or "").strip()
                     tgt_name = (rel.get("target") or "").strip()
                     rel_type = (rel.get("relation") or "RELATED_TO").strip()
@@ -308,24 +341,22 @@ Text to analyze:
                     if not src_name or not tgt_name:
                         continue
 
-                    src_id = node_map.get(src_name.lower())
-                    tgt_id = node_map.get(tgt_name.lower())
+                    emb = edge_embeddings[edge_emb_idx] if edge_emb_idx < len(edge_embeddings) else None
+                    edge_emb_idx += 1
 
-                    # Resolve nodes that weren't in this chunk's entity list
-                    if not src_id:
-                        src_id = self._find_or_create_node(cur, graph_id, src_name)
-                        node_map[src_name.lower()] = src_id
-                    if not tgt_id:
-                        tgt_id = self._find_or_create_node(cur, graph_id, tgt_name)
-                        node_map[tgt_name.lower()] = tgt_id
+                    src_id = node_map.get(src_name.lower()) or self._find_or_create_node(cur, graph_id, src_name)
+                    tgt_id = node_map.get(tgt_name.lower()) or self._find_or_create_node(cur, graph_id, tgt_name)
+                    node_map[src_name.lower()] = src_id
+                    node_map[tgt_name.lower()] = tgt_id
 
                     cur.execute(
                         """INSERT INTO graph_edges
                                (id, graph_id, name, fact, source_node_id, target_node_id,
-                                source_node_name, target_node_name)
-                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                                source_node_name, target_node_name, embedding)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                         (str(uuid.uuid4()), graph_id, rel_type, fact,
-                         src_id, tgt_id, src_name, tgt_name),
+                         src_id, tgt_id, src_name, tgt_name,
+                         _vec_str(emb) if emb else None),
                     )
 
         return episode_id

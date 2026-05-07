@@ -13,11 +13,36 @@ from dataclasses import dataclass, field
 
 from ..db import get_conn
 from ..config import Config
+from ..embedding import EmbeddingClient, _vec_str
 from ..utils.logger import get_logger
 from ..utils.llm_client import LLMClient
 from ..utils.locale import get_locale, t
 
 logger = get_logger('mirofish.zep_tools')
+
+
+# ── Reciprocal Rank Fusion ─────────────────────────────────────────────────────
+
+def _rrf_merge(
+    vec_ids: List[str],
+    kw_ids: List[str],
+    id_to_row: Dict[str, Any],
+    limit: int,
+    k: int = 60,
+) -> List[Dict[str, Any]]:
+    """
+    Merge two ranked lists (vector search + keyword search) using Reciprocal
+    Rank Fusion.  Score = 1/(k + rank_vector) + 1/(k + rank_keyword).
+    Results not present in a list get rank = ∞ (score contribution = 0).
+    """
+    scores: Dict[str, float] = {}
+    for rank, uid in enumerate(vec_ids, start=1):
+        scores[uid] = scores.get(uid, 0.0) + 1.0 / (k + rank)
+    for rank, uid in enumerate(kw_ids, start=1):
+        scores[uid] = scores.get(uid, 0.0) + 1.0 / (k + rank)
+
+    ranked = sorted(scores.keys(), key=lambda uid: scores[uid], reverse=True)
+    return [id_to_row[uid] for uid in ranked[:limit] if uid in id_to_row]
 
 
 # ── Dataclasses (unchanged public API) ────────────────────────────────────────
@@ -328,7 +353,14 @@ class ZepToolsService:
     def __init__(self, base_url: Optional[str] = None, llm_client: Optional[LLMClient] = None):
         # base_url kept for signature compatibility — not used
         self._llm_client = llm_client
+        self._embedder: Optional[EmbeddingClient] = None
         logger.info(t("console.zepToolsInitialized"))
+
+    @property
+    def embedder(self) -> EmbeddingClient:
+        if self._embedder is None:
+            self._embedder = EmbeddingClient()
+        return self._embedder
 
     @property
     def llm(self) -> LLMClient:
@@ -478,53 +510,175 @@ class ZepToolsService:
         limit: int = 10,
         scope: str = "edges",
     ) -> SearchResult:
-        """Keyword search across edges and/or nodes using PostgreSQL ILIKE."""
+        """
+        Hybrid search: vector similarity (pgvector) merged with keyword matching.
+
+        Strategy:
+        1. If embeddings are available for this provider, run a cosine-similarity
+           ANN query against graph_edges/graph_nodes.
+        2. Always also run keyword matching (catches exact names, numbers, codes).
+        3. Merge both result sets using Reciprocal Rank Fusion (RRF) so neither
+           dominates — conceptual matches and exact matches both surface.
+
+        Falls back to keyword-only when the provider has no embedding model
+        (e.g. Anthropic) or when no embeddings have been generated yet.
+        """
         logger.info(t("console.graphSearch", graphId=graph_id, query=query[:50]))
 
-        keywords = [w.strip() for w in query.lower().replace(',', ' ').replace('，', ' ').split() if len(w.strip()) > 1]
+        query_vec = self.embedder.embed(query) if self.embedder.supported() else None
+
         facts: List[str] = []
         edges_out: List[Dict[str, Any]] = []
         nodes_out: List[Dict[str, Any]] = []
 
         if scope in ("edges", "both"):
-            all_edges = self.get_all_edges(graph_id)
-            scored = []
-            for edge in all_edges:
-                score = self._kw_score(edge.fact + " " + edge.name, query.lower(), keywords)
-                if score > 0:
-                    scored.append((score, edge))
-            scored.sort(key=lambda x: x[0], reverse=True)
-            for _, edge in scored[:limit]:
-                if edge.fact:
-                    facts.append(edge.fact)
-                edges_out.append({
-                    "uuid": edge.uuid,
-                    "name": edge.name,
-                    "fact": edge.fact,
-                    "source_node_uuid": edge.source_node_uuid,
-                    "target_node_uuid": edge.target_node_uuid,
-                })
+            edges_out, facts = self._search_edges(graph_id, query, query_vec, limit)
 
         if scope in ("nodes", "both"):
-            all_nodes = self.get_all_nodes(graph_id)
-            scored_nodes = []
-            for node in all_nodes:
-                score = self._kw_score(node.name + " " + node.summary, query.lower(), keywords)
-                if score > 0:
-                    scored_nodes.append((score, node))
-            scored_nodes.sort(key=lambda x: x[0], reverse=True)
-            for _, node in scored_nodes[:limit]:
-                nodes_out.append({
-                    "uuid": node.uuid,
-                    "name": node.name,
-                    "labels": node.labels,
-                    "summary": node.summary,
-                })
-                if node.summary:
-                    facts.append(f"[{node.name}]: {node.summary}")
+            nodes_out, node_facts = self._search_nodes(graph_id, query, query_vec, limit)
+            facts.extend(node_facts)
 
         logger.info(t("console.searchComplete", count=len(facts)))
         return SearchResult(facts=facts, edges=edges_out, nodes=nodes_out, query=query, total_count=len(facts))
+
+    def _search_edges(
+        self,
+        graph_id: str,
+        query: str,
+        query_vec: Optional[List[float]],
+        limit: int,
+    ):
+        """Return (edges_list, facts_list) using RRF of vector + keyword."""
+        # ── Vector search ──────────────────────────────────────────────────────
+        vec_rows: List[Dict] = []
+        if query_vec:
+            try:
+                with get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """SELECT id, name, fact, source_node_id, target_node_id,
+                                      source_node_name, target_node_name,
+                                      (embedding <=> %s::vector) AS distance
+                               FROM graph_edges
+                               WHERE graph_id = %s AND embedding IS NOT NULL
+                               ORDER BY embedding <=> %s::vector
+                               LIMIT %s""",
+                            (_vec_str(query_vec), graph_id, _vec_str(query_vec), limit * 2),
+                        )
+                        vec_rows = [
+                            {
+                                "uuid": str(r[0]),
+                                "name": r[1] or "",
+                                "fact": r[2] or "",
+                                "source_node_uuid": str(r[3]) if r[3] else "",
+                                "target_node_uuid": str(r[4]) if r[4] else "",
+                                "source_node_name": r[5] or "",
+                                "target_node_name": r[6] or "",
+                                "_distance": float(r[7]),
+                            }
+                            for r in cur.fetchall()
+                        ]
+            except Exception as e:
+                logger.warning(f"Vector edge search failed: {e}")
+
+        # ── Keyword search ─────────────────────────────────────────────────────
+        keywords = [w.strip() for w in query.lower().replace(',', ' ').replace('，', ' ').split() if len(w.strip()) > 1]
+        kw_rows: List[Dict] = []
+        try:
+            all_edges = self.get_all_edges(graph_id)
+            scored = [
+                (self._kw_score(e.fact + " " + e.name, query.lower(), keywords), e)
+                for e in all_edges
+            ]
+            scored = [(s, e) for s, e in scored if s > 0]
+            scored.sort(key=lambda x: x[0], reverse=True)
+            kw_rows = [
+                {
+                    "uuid": e.uuid,
+                    "name": e.name,
+                    "fact": e.fact,
+                    "source_node_uuid": e.source_node_uuid,
+                    "target_node_uuid": e.target_node_uuid,
+                    "source_node_name": e.source_node_name or "",
+                    "target_node_name": e.target_node_name or "",
+                }
+                for _, e in scored[: limit * 2]
+            ]
+        except Exception as e:
+            logger.warning(f"Keyword edge search failed: {e}")
+
+        # ── Reciprocal Rank Fusion ─────────────────────────────────────────────
+        merged = _rrf_merge(
+            [r["uuid"] for r in vec_rows],
+            [r["uuid"] for r in kw_rows],
+            {r["uuid"]: r for r in vec_rows + kw_rows},
+            limit,
+        )
+
+        facts = [r["fact"] for r in merged if r["fact"]]
+        return merged, facts
+
+    def _search_nodes(
+        self,
+        graph_id: str,
+        query: str,
+        query_vec: Optional[List[float]],
+        limit: int,
+    ):
+        """Return (nodes_list, facts_list) using RRF of vector + keyword."""
+        vec_rows: List[Dict] = []
+        if query_vec:
+            try:
+                with get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """SELECT id, name, labels, summary,
+                                      (embedding <=> %s::vector) AS distance
+                               FROM graph_nodes
+                               WHERE graph_id = %s AND embedding IS NOT NULL
+                               ORDER BY embedding <=> %s::vector
+                               LIMIT %s""",
+                            (_vec_str(query_vec), graph_id, _vec_str(query_vec), limit * 2),
+                        )
+                        vec_rows = [
+                            {
+                                "uuid": str(r[0]),
+                                "name": r[1] or "",
+                                "labels": r[2] or ["Entity"],
+                                "summary": r[3] or "",
+                                "_distance": float(r[4]),
+                            }
+                            for r in cur.fetchall()
+                        ]
+            except Exception as e:
+                logger.warning(f"Vector node search failed: {e}")
+
+        keywords = [w.strip() for w in query.lower().replace(',', ' ').replace('，', ' ').split() if len(w.strip()) > 1]
+        kw_rows: List[Dict] = []
+        try:
+            all_nodes = self.get_all_nodes(graph_id)
+            scored = [
+                (self._kw_score(n.name + " " + n.summary, query.lower(), keywords), n)
+                for n in all_nodes
+            ]
+            scored = [(s, n) for s, n in scored if s > 0]
+            scored.sort(key=lambda x: x[0], reverse=True)
+            kw_rows = [
+                {"uuid": n.uuid, "name": n.name, "labels": n.labels, "summary": n.summary}
+                for _, n in scored[: limit * 2]
+            ]
+        except Exception as e:
+            logger.warning(f"Keyword node search failed: {e}")
+
+        merged = _rrf_merge(
+            [r["uuid"] for r in vec_rows],
+            [r["uuid"] for r in kw_rows],
+            {r["uuid"]: r for r in vec_rows + kw_rows},
+            limit,
+        )
+
+        facts = [f"[{r['name']}]: {r['summary']}" for r in merged if r.get("summary")]
+        return merged, facts
 
     @staticmethod
     def _kw_score(text: str, query_lower: str, keywords: List[str]) -> int:
