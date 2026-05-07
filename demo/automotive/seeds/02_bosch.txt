@@ -1,0 +1,59 @@
+ROBERT BOSCH GMBH — COMPANY PROFILE AND NEWS 2023–2026
+=======================================================
+
+COMPANY OVERVIEW
+
+Robert Bosch GmbH is the world's largest automotive supplier by revenue, headquartered in Gerlingen, Germany. The company operates across four business sectors: Mobility (automotive), Industrial Technology, Consumer Goods, and Energy and Building Technology. Automotive accounts for approximately 60% of group revenue. Bosch is privately held, with the Robert Bosch Stiftung charitable foundation owning 94% of shares.
+
+In 2023, Bosch reported total group revenue of €91.6 billion, with Mobility Solutions contributing approximately €56 billion. The company employed roughly 429,000 people worldwide.
+
+KEY PRODUCTS AND TECHNOLOGIES
+
+In the EV era, Bosch's most strategically important product lines include:
+- Electric motors and e-axle systems for EVs
+- Power electronics (inverters, DC-DC converters, onboard chargers)
+- Battery management systems (BMS)
+- Hydrogen fuel cell systems and electrolyzers
+- ADAS sensors (radar, lidar, cameras)
+- Vehicle motion control (ABS, ESP, braking systems)
+- Automotive semiconductors
+
+Legacy ICE product lines under structural pressure include fuel injection systems, diesel components, exhaust aftertreatment, and conventional transmissions.
+
+2023: RESTRUCTURING BEGINS
+
+In January 2023, Bosch announced a restructuring program targeting its Mobility Solutions division. The company acknowledged that the shift to electrification would permanently reduce demand for many ICE-related components. Bosch began consulting processes with works councils in Germany affecting thousands of positions in powertrain-related divisions.
+
+Bosch invested approximately €10 billion in electromobility R&D over the 2021–2025 period. In 2023, the company opened new production facilities for electric motor components in Blaichheim, Germany, and expanded its power electronics manufacturing in Hungary.
+
+Bosch and Volkswagen Group deepened their collaboration on software-defined vehicle architecture. Bosch's software subsidiary, ETAS, worked with VW's CARIAD on middleware and domain control unit software, though progress was slower than planned.
+
+In China, Bosch maintained strong relationships with major domestic OEMs including SAIC, Dongfeng, Chery, and Geely. However, Chinese Tier 1 suppliers including CATL (for battery systems), Inovance, and BYD Auto's component divisions intensified competition in power electronics and electric drivetrain components.
+
+2024: DEEPER CUTS, STRATEGIC FOCUS
+
+In February 2024, Bosch announced one of its largest-ever restructuring programs, targeting up to 7,000 job cuts across its Mobility Solutions division globally, primarily in Germany, over the 2024–2026 period. The cuts were concentrated in the Chassis Systems Control (braking), Powertrain Solutions (diesel/gasoline injection), and Electrical Drives divisions. Works councils resisted the scale of cuts, leading to extended negotiations.
+
+Bosch sold its gasoline direct injection (GDI) valve business to a private equity consortium in Q3 2024, signaling a clear exit from certain legacy ICE components.
+
+Bosch secured a major contract with a major European OEM for EV power electronics supply starting in 2026, representing estimated revenue of over €1 billion over five years. The company also won supply agreements with two Chinese EV manufacturers for radar-based ADAS systems.
+
+Bosch Hydrogen formed a joint venture with Purem (formerly Eberspächer's exhaust division) to develop hydrogen fuel cell systems for commercial vehicles, targeting the European truck market where hydrogen adoption was seen as more viable than in passenger cars.
+
+In semiconductors, Bosch's wholly-owned chip fabrication facility in Dresden, Germany — representing a €1 billion investment — began volume production of 200mm silicon carbide (SiC) wafers used in power electronics. SiC chips enable more efficient power conversion in EV inverters and chargers, and Bosch aimed to supply both internally and to external customers.
+
+2025: COMPETITION WITH CHINESE SUPPLIERS INTENSIFIES
+
+By early 2025, Bosch's China business faced meaningful margin pressure as local suppliers gained technical capability in ADAS sensors and electric drivetrain components. BYD's vertical integration strategy and CATL's expansion into complete drivetrain systems meant Bosch could no longer take Chinese OEM business for granted.
+
+Bosch responded by establishing a dedicated China product development team with authority to develop lower-cost variants of key products specifically for Chinese market price points, rather than adapting European-developed products.
+
+Bosch's Connected Mobility division expanded its software and over-the-air (OTA) update platform. The company positioned itself as a software provider, not just a hardware supplier, in an attempt to maintain relevance in the SDV era.
+
+Bosch's revenue in Mobility declined slightly in real terms in 2024 versus 2023, reflecting both restructuring costs and volume declines in ICE components. However, EV-related revenue grew approximately 25% year-on-year, and management guided toward EV components representing 40% of Mobility revenue by 2027.
+
+2026 OUTLOOK
+
+Bosch's strategic plan through 2030 targets Mobility revenue growth of approximately 3% CAGR, significantly below the company's historical rate, reflecting the structural headwinds. Growth is expected to come entirely from EV-related products, ADAS/autonomous driving systems, and software. The company aimed to fully offset ICE revenue decline with EV and software revenue by 2029.
+
+Key risks identified by management include: faster-than-expected loss of Chinese market share to local suppliers; potential delays in European EV adoption reducing near-term EV component volumes; and margin pressure from OEM cost-down programs.

@@ -1,0 +1,56 @@
+VALEO SE — COMPANY PROFILE AND NEWS 2023–2026
+=============================================
+
+COMPANY OVERVIEW
+
+Valeo SE is a French multinational automotive supplier headquartered in Paris, listed on Euronext Paris (FR0013176526). The company is a Tier 1 supplier specializing in technologies for vehicle electrification, driving assistance systems, lighting, and thermal management. Valeo operates 184 plants, 21 research centers, and 40 development centers across 31 countries, employing approximately 103,000 people.
+
+In 2023, Valeo reported consolidated revenue of €22.0 billion, a record, driven by electrification and ADAS product demand. However, profitability remained under pressure from high R&D intensity, raw material costs, and energy prices.
+
+KEY PRODUCT LINES
+
+Valeo's four business groups are:
+1. Powertrain Systems — 48V mild hybrid systems, high-voltage electrification components, e-motors, thermal management for EV batteries
+2. Thermal Systems — HVAC, battery thermal management, heat pumps for EVs
+3. Comfort and Driving Assistance Systems — ADAS sensors (cameras, radar, ultrasonic), parking systems, lighting
+4. Visibility Systems — wiper systems, lighting
+
+Valeo is the global leader in 48V mild hybrid systems, an intermediate electrification technology that reduces fuel consumption by 15–20% at lower cost than full hybrids. The company had shipped over 10 million 48V systems cumulatively by end of 2023.
+
+2023: RECORD REVENUE, MARGIN PRESSURE
+
+Valeo's 2023 revenue of €22.0 billion represented 13% organic growth versus 2022. Growth was broad-based across all product groups and geographies. However, the EBITDA margin was approximately 9.2%, below management's target of 11–12%, due to ongoing inflation pass-through lags with customers, elevated energy costs at European plants, and heavy R&D investment.
+
+The company launched its SCALA 3 long-range lidar for autonomous driving applications, targeting Level 3 highway automation. Valeo claimed a unique position as the only automotive supplier offering lidar at automotive-grade volume and cost. Several OEMs, including Honda and a major German premium brand, integrated SCALA into production models.
+
+Valeo signed a partnership with Mobileye to co-develop front camera systems for SuperVision autonomous driving systems, broadening the addressable market for its imaging sensors.
+
+In China, Valeo strengthened ties with local EV manufacturers. The company secured contracts with BYD, NIO, and Li Auto for thermal management systems — specifically battery cooling and heat pump systems, which are critical for EV range in cold climates.
+
+2024: FINANCIAL PRESSURE, STRATEGIC REFOCUS
+
+Valeo issued a profit warning in February 2024 as European automotive production volumes disappointed. OEM customers reduced build schedules as EV demand in Europe softened in late 2023 and early 2024, partially driven by the phasing out of national EV subsidies in Germany and other markets.
+
+In response, Valeo announced a €500 million cost reduction program targeting €200 million in annual savings by 2026. The plan included consolidation of European manufacturing facilities, headcount reductions of approximately 1,500 positions, and a reduction in the number of R&D programs. The company paused expansion of its 48V production capacity in France pending demand recovery.
+
+Despite cost pressures, Valeo maintained its commitment to full electrification programs. The company launched its third-generation high-voltage (400V/800V) electric motor and inverter system, targeting mid-range passenger EV applications. This system targeted higher volume, lower price points than the company's previous offerings aimed at premium EVs.
+
+Valeo's lidar business attracted significant interest from automotive and technology investors. The company considered strategic options for its Lidar division including partial IPO or joint venture, seeking to crystallize value and fund development independently. Discussions with potential partners from Asia and the technology sector were reported.
+
+Valeo deepened its presence in India, opening a new R&D center in Pune and expanding manufacturing for camera-based ADAS systems targeting the rapidly growing Indian new-vehicle market.
+
+2025: RESTRUCTURING BEARS FRUIT, CHINA COMPLEXITY
+
+By mid-2025, Valeo's cost program was delivering results. EBITDA margins improved toward the 10.5% range. Revenue from electrification products — defined as products that would not exist without vehicle electrification — exceeded 45% of total company revenue, up from 35% in 2022.
+
+Valeo's China joint venture with Siemens for electric motors (Valeo Siemens eAutomotive) faced intensifying competition from local Chinese electric motor manufacturers including Jing-Jin Electric and BYD's internal supplier. The JV won key contracts with European OEMs in China but struggled to compete on cost with domestic suppliers for Chinese-brand vehicles.
+
+Valeo signed a development agreement with a major Chinese automaker for next-generation 48V integrated starter-generator systems adapted for Chinese market price points. The company established a dedicated China Engineering Center in Shanghai with 800 engineers tasked with developing locally optimized product variants.
+
+The company's heat pump systems for EVs proved a strong growth driver as European and Chinese consumers demanded vehicles with longer winter range. Valeo's heat pump penetration in EV models grew from 30% in 2023 to over 55% in new EV model introductions in 2025.
+
+2026 OUTLOOK
+
+Valeo's management targeted revenue growth of 5–7% CAGR to 2030, with electrification products growing at 15–20% annually offsetting flat or declining legacy product revenues. The lidar business strategic review remained ongoing, with an independent listing or strategic partnership expected in 2026.
+
+Key strategic risks for Valeo included: ability to compete with Chinese suppliers in China's dominant EV market; OEM pressure to reduce supplier prices as EV cost targets became more aggressive; and execution risk in managing simultaneous restructuring and growth investment programs.

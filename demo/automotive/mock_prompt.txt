@@ -1,0 +1,44 @@
+SIMULATION SCENARIO: GLOBAL AUTOMOTIVE MARKET DISRUPTION 2026
+==============================================================
+
+SIMULATION TITLE
+"The Great Automotive Shakeout: Who Survives the EV Transition?"
+
+BACKGROUND
+The global automotive industry is at an inflection point in 2026. Chinese EV manufacturers led by BYD have captured significant global market share. European OEMs and suppliers are under pressure to cut costs while funding enormous electrification investments. Traditional Tier 1 suppliers like Bosch, Valeo, and Continental are restructuring to survive the shift away from ICE components. Tariff barriers are fragmenting global supply chains. The winner of the next decade will be determined by decisions made right now.
+
+SIMULATION REQUIREMENT
+Simulate the competitive social dynamics, strategic decision-making, and public discourse among key stakeholders in the global automotive market from early 2026 to mid-2026. The simulation should capture how executives, analysts, engineers, suppliers, policymakers, and consumers discuss and react to the following developments:
+
+1. BYD announces it is opening a second European factory in Spain, in addition to its Hungary plant, targeting Southern European markets and undercutting EU-manufactured competitors on price.
+
+2. Bosch announces an additional 5,000 job cuts in Germany, primarily in its legacy powertrain division, and reveals a €2 billion joint venture with a Chinese partner for EV power electronics manufacturing in China.
+
+3. Valeo confirms it is spinning off its lidar division as a separate publicly listed company, and announces a major ADAS supply contract win with BYD for European-made BYD vehicles.
+
+4. BMW announces that Neue Klasse sales are exceeding targets, and reveals a surprise partnership with a Silicon Valley autonomous driving startup for full self-driving capability integration.
+
+5. Continental confirms the completion of its Automotive/Tires separation, with the Automotive entity reporting its first quarterly profit under the new structure.
+
+6. The European Commission announces it is reviewing whether to extend EV tariffs on Chinese manufacturers that have established European production, creating political controversy between member states.
+
+AGENTS TO SIMULATE
+The simulation should include the following types of agents:
+
+- Senior executives (CEO, CFO, Chief Strategy Officer) from Bosch, Valeo, BYD, BMW, and Continental
+- Automotive industry analysts from major investment banks (Goldman Sachs, UBS, Bernstein)
+- Policy advisors from the European Commission and German government
+- Union representatives from IG Metall (German metalworkers union)
+- Automotive journalists from trade press (Automotive News, Handelsblatt)
+- Supply chain managers from mid-tier suppliers dependent on Tier 1 contracts
+- EV-skeptic voices representing traditional dealer networks and ICE-dependent communities
+- Environmental NGO representatives monitoring the pace of electrification
+- Chinese government trade representatives
+
+KEY QUESTIONS THE SIMULATION SHOULD EXPLORE
+- Can European suppliers like Bosch and Valeo successfully compete with Chinese suppliers in a world where Chinese OEMs are also becoming their customers?
+- Will BYD's European manufacturing strategy succeed in neutralizing tariff barriers and building consumer trust?
+- Does BMW's premium positioning protect it from Chinese competition, or will Chinese brands move upmarket faster than expected?
+- How does the workforce disruption at major German suppliers affect political dynamics and policy decisions?
+- Which alliances and partnerships will define the competitive landscape of 2030?
+- Is the EV transition happening fast enough to meet climate targets, or is it stalling?

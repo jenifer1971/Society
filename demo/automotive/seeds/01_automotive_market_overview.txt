@@ -1,0 +1,44 @@
+GLOBAL AUTOMOTIVE MARKET OVERVIEW 2023–2026
+===========================================
+
+MARKET TRANSFORMATION
+
+The global automotive industry entered 2023 in the middle of its most significant structural shift in over a century: the transition from internal combustion engines (ICE) to battery electric vehicles (BEV). This transition, accelerated by regulation, consumer preference, and massive capital investment, reshaped competitive dynamics across OEMs, Tier 1 suppliers, and battery manufacturers.
+
+Global vehicle sales recovered to approximately 88 million units in 2023, up from 81 million in 2022, as semiconductor supply chains stabilized. EV penetration reached 18% globally in 2023, led by China at 35%, Europe at 22%, and the United States at 9%.
+
+REGULATORY PRESSURE
+
+The European Union confirmed its 2035 ban on new ICE vehicle sales in February 2023 after initial political controversy. The regulation required all new passenger cars and light commercial vehicles sold in the EU after 2035 to produce zero CO2 emissions. This forced every European OEM and supplier to accelerate electrification roadmaps regardless of short-term profitability.
+
+The United States Inflation Reduction Act (IRA), passed in 2022, continued to reshape North American supply chains in 2023 and 2024 by tying EV tax credits to North American battery content requirements. This prompted billions in domestic battery factory investment.
+
+China extended its New Energy Vehicle (NEV) subsidies and maintained aggressive industrial policy supporting domestic EV champions. China became the world's largest automotive exporter in 2023, surpassing Japan for the first time, driven primarily by EV exports.
+
+CHINESE COMPETITION
+
+Chinese automakers, led by BYD, SAIC, Geely, and NIO, emerged as genuine global competitors in 2023–2025. BYD overtook Tesla as the world's top-selling EV manufacturer in Q4 2023 by volume. Chinese brands rapidly gained share in Southeast Asia, Latin America, and increasingly in Europe, where they faced growing political resistance and tariff investigations.
+
+The European Commission launched an anti-subsidy investigation into Chinese EVs in October 2023. Provisional tariffs of up to 38% on Chinese EV imports were announced in June 2024, in addition to the existing 10% duty, pending final determination.
+
+BATTERY SUPPLY CHAIN
+
+Lithium prices crashed by over 80% between January 2023 and end of 2024 after a speculative bubble, creating margin pressure on battery manufacturers but improving EV cost competitiveness. Nickel, cobalt, and manganese prices also declined significantly.
+
+The race for battery gigafactory capacity intensified. CATL, LG Energy Solution, Samsung SDI, SK On, and Panasonic all announced major expansions in Europe and North America. OEMs including GM, Ford, Volkswagen, and Stellantis pursued varying degrees of battery vertical integration.
+
+Solid-state batteries remained in advanced development through 2024–2025, with Toyota and BMW leading commercialization efforts. Mass production of solid-state batteries for passenger vehicles was not expected before 2028.
+
+SUPPLIER DISRUPTION
+
+Traditional Tier 1 suppliers faced existential questions about their business models as EVs require 30–50% fewer mechanical components than ICE vehicles. Suppliers heavily exposed to powertrain components — exhaust systems, fuel injection, transmissions — faced structural revenue decline.
+
+Suppliers responded by cutting ICE-related workforce, investing in EV-relevant product lines (power electronics, thermal management, e-axles, battery management systems), and in some cases divesting legacy businesses.
+
+SOFTWARE-DEFINED VEHICLES
+
+OEMs announced strategies to bring more software development in-house, challenging traditional supplier relationships. Volkswagen's software subsidiary CARIAD struggled with delays and cost overruns. BMW, Mercedes, and Stellantis pursued hybrid approaches, combining in-house capability with specialist suppliers. The shift to software-defined vehicles (SDV) created new competitive opportunities for semiconductor and software companies.
+
+OUTLOOK 2025–2026
+
+Global EV penetration was forecast to reach 25–30% by 2026. Key uncertainties included pace of charging infrastructure build-out, consumer acceptance in non-urban markets, political stability of subsidy regimes, and whether Chinese manufacturers could successfully establish European production facilities to navigate tariff barriers. Supplier consolidation was expected to accelerate as weaker players unable to fund the transition exited the market.
