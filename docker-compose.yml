@@ -2,7 +2,11 @@ services:
 
   # ── Self-hosted Zep memory store ──────────────────────────────────────────
   # Agent memories never leave your infrastructure.
-  # Zep Community Edition requires no API key when self-hosted.
+  # Zep uses ZEP_LLM_API_KEY + ZEP_LLM_ENDPOINT for its internal embeddings.
+  # Point these at whichever cloud provider the enterprise already subscribes to.
+  # e.g. Google: endpoint = https://generativelanguage.googleapis.com/v1beta/openai/
+  #      Azure:  endpoint = https://<resource>.openai.azure.com/openai/deployments/<deploy>/
+  #      OpenAI: leave endpoint blank (default)
   zep:
     image: ghcr.io/getzep/zep:latest
     container_name: zep
@@ -12,7 +16,8 @@ services:
     environment:
       - ZEP_STORE_TYPE=postgres
       - ZEP_STORE_POSTGRES_DSN=postgresql://zep:zep@zep-db:5432/zep
-      - ZEP_OPENAI_API_KEY=${ZEP_OPENAI_API_KEY}
+      - ZEP_OPENAI_API_KEY=${ZEP_LLM_API_KEY}
+      - ZEP_OPENAI_ENDPOINT=${ZEP_LLM_ENDPOINT:-}
     depends_on:
       zep-db:
         condition: service_healthy
