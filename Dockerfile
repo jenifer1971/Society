@@ -11,18 +11,15 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY frontend/package.json frontend/package-lock.json ./frontend/
-COPY backend/pyproject.toml backend/uv.lock ./backend/
+COPY backend/requirements.txt /tmp/requirements.txt
+COPY backend/pyproject.toml ./backend/
 
 # Install Node deps
 RUN npm ci && npm ci --prefix frontend
 
-# Export locked Python deps, drop nvidia CUDA packages (not needed without a GPU).
-# torch itself installs fine from PyPI and runs on CPU without nvidia-* packages.
-RUN cd backend && \
-    uv export --frozen --no-dev --no-hashes --no-emit-project \
-        | grep -Ev '^(nvidia-|triton)' > /tmp/requirements.txt && \
-    pip install --no-cache-dir -r /tmp/requirements.txt && \
-    pip install --no-cache-dir -e . && \
+# Install pinned Python deps (nvidia/triton already excluded in requirements.txt).
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
+    pip install --no-cache-dir -e backend/ && \
     pip cache purge
 
 COPY . .
