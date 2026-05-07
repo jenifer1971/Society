@@ -7,8 +7,24 @@ services:
   # e.g. Google: endpoint = https://generativelanguage.googleapis.com/v1beta/openai/
   #      Azure:  endpoint = https://<resource>.openai.azure.com/openai/deployments/<deploy>/
   #      OpenAI: leave endpoint blank (default)
+  # Local embedding server — Zep points here instead of OpenAI
+  # nomic-embed-text is a small, fast embedding model (~274MB)
+  # No data leaves the enterprise — fully on-prem
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    # Pull the embedding model on first start
+    entrypoint: >
+      sh -c "ollama serve &
+             sleep 5 &&
+             ollama pull nomic-embed-text &&
+             wait"
+
   zep:
-    image: ghcr.io/getzep/zep-ce:latest
+    image: ghcr.io/getzep/zep:0.27.2
     container_name: zep
     restart: unless-stopped
     ports:
@@ -16,19 +32,15 @@ services:
     environment:
       - ZEP_STORE_TYPE=postgres
       - ZEP_STORE_POSTGRES_DSN=postgresql://zep:zep@zep-db:5432/zep
-      # CE edition uses a built-in local embedding model — no external API key needed
-      - ZEP_NLP_SERVER_URL=http://zep-nlp:5557
+      # Point Zep at the local Ollama embedding server — no OpenAI needed
+      - ZEP_OPENAI_API_KEY=ollama
+      - ZEP_OPENAI_ENDPOINT=http://ollama:11434/v1
+      - ZEP_MEMORY_MESSAGE_WINDOW=12
     depends_on:
       zep-db:
         condition: service_healthy
-      zep-nlp:
+      ollama:
         condition: service_started
-
-  # Local NLP server — runs embeddings on-prem, no data sent externally
-  zep-nlp:
-    image: ghcr.io/getzep/zep-nlp-server:latest
-    container_name: zep-nlp
-    restart: unless-stopped
 
   zep-db:
     image: postgres:16-alpine
@@ -66,3 +78,4 @@ services:
 
 volumes:
   zep_postgres_data:
+  ollama_data:
