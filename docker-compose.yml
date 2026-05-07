@@ -8,7 +8,7 @@ services:
   #      Azure:  endpoint = https://<resource>.openai.azure.com/openai/deployments/<deploy>/
   #      OpenAI: leave endpoint blank (default)
   zep:
-    image: ghcr.io/getzep/zep:latest
+    image: ghcr.io/getzep/zep:0.27.2
     container_name: zep
     restart: unless-stopped
     ports:
