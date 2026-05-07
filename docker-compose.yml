@@ -8,21 +8,27 @@ services:
   #      Azure:  endpoint = https://<resource>.openai.azure.com/openai/deployments/<deploy>/
   #      OpenAI: leave endpoint blank (default)
   zep:
-    image: ghcr.io/getzep/zep:0.27.2
+    image: ghcr.io/getzep/zep-ce:latest
     container_name: zep
     restart: unless-stopped
-    env_file:
-      - .env
     ports:
       - "8000:8000"
     environment:
       - ZEP_STORE_TYPE=postgres
       - ZEP_STORE_POSTGRES_DSN=postgresql://zep:zep@zep-db:5432/zep
-      - ZEP_OPENAI_API_KEY=${ZEP_LLM_API_KEY}
-      - ZEP_OPENAI_ENDPOINT=${ZEP_LLM_ENDPOINT:-}
+      # CE edition uses a built-in local embedding model — no external API key needed
+      - ZEP_NLP_SERVER_URL=http://zep-nlp:5557
     depends_on:
       zep-db:
         condition: service_healthy
+      zep-nlp:
+        condition: service_started
+
+  # Local NLP server — runs embeddings on-prem, no data sent externally
+  zep-nlp:
+    image: ghcr.io/getzep/zep-nlp-server:latest
+    container_name: zep-nlp
+    restart: unless-stopped
 
   zep-db:
     image: postgres:16-alpine
