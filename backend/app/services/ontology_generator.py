@@ -414,7 +414,7 @@ class OntologyGenerator:
             '"""',
             '',
             'from pydantic import Field',
-            'from zep_python.external_clients.ontology import EntityModel, EntityText, EdgeModel',
+            '# EntityModel / EntityText / EdgeModel removed (Zep replaced by pgvector)',
             '',
             '',
             '# ============== 实体类型定义 ==============',

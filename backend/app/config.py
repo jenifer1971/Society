@@ -57,9 +57,12 @@ class Config:
     OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'llama3')
 
     # ---------------------------------------------------------------------------
-    # Zep memory — always self-hosted; no cloud key required
+    # PostgreSQL + pgvector — knowledge graph & agent memory store
     # ---------------------------------------------------------------------------
-    ZEP_BASE_URL = os.environ.get('ZEP_BASE_URL', 'http://zep:8000')
+    POSTGRES_DSN = os.environ.get(
+        'POSTGRES_DSN',
+        'postgresql://society:society@localhost:5432/society',
+    )
 
     # ---------------------------------------------------------------------------
     # File upload
@@ -122,8 +125,5 @@ class Config:
         else:
             errors.append(f"Unknown LLM_PROVIDER '{p}'. "
                           "Choose: openai, azure_openai, gemini, anthropic, bedrock, ollama")
-
-        if not cls.ZEP_BASE_URL:
-            errors.append("ZEP_BASE_URL is not set")
 
         return errors

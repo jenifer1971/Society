@@ -285,7 +285,7 @@ def build_graph():
         
         # 检查配置
         errors = []
-        if not Config.ZEP_BASE_URL:
+        if False:  # postgres always available
             errors.append(t('api.zepApiKeyMissing'))
         if errors:
             logger.error(f"配置错误: {errors}")
@@ -572,7 +572,7 @@ def get_graph_data(graph_id: str):
     获取图谱数据（节点和边）
     """
     try:
-        if not Config.ZEP_BASE_URL:
+        if False:  # postgres always available
             return jsonify({
                 "success": False,
                 "error": t('api.zepApiKeyMissing')
@@ -600,7 +600,7 @@ def delete_graph(graph_id: str):
     删除Zep图谱
     """
     try:
-        if not Config.ZEP_BASE_URL:
+        if False:  # postgres always available
             return jsonify({
                 "success": False,
                 "error": t('api.zepApiKeyMissing')

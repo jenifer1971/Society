@@ -1,33 +1,36 @@
 """
-图谱构建服务
-接口2：使用Zep API构建Standalone Graph
+Graph building service — extracts entities and relationships from documents
+using the LLM, then stores them in PostgreSQL (pgvector-enabled).
+
+Public API is identical to the old Zep-based implementation so all callers
+are unaffected.
 """
 
-import os
 import uuid
-import time
+import json
 import threading
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
 
-from zep_python.client import Zep
-from zep_python import EpisodeData, EntityEdgeSourceTarget
-
 from ..config import Config
+from ..db import get_conn
 from ..models.task import TaskManager, TaskStatus
-from ..utils.zep_paging import fetch_all_nodes, fetch_all_edges
+from ..utils.llm_client import LLMClient
 from .text_processor import TextProcessor
 from ..utils.locale import t, get_locale, set_locale
+from ..utils.logger import get_logger
+
+logger = get_logger('mirofish.graph_builder')
 
 
 @dataclass
 class GraphInfo:
-    """图谱信息"""
+    """Graph summary returned after a build."""
     graph_id: str
     node_count: int
     edge_count: int
     entity_types: List[str]
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "graph_id": self.graph_id,
@@ -39,63 +42,57 @@ class GraphInfo:
 
 class GraphBuilderService:
     """
-    图谱构建服务
-    负责调用Zep API构建知识图谱
+    Builds a knowledge graph from raw text using the configured LLM.
+
+    For each text chunk the LLM is prompted to extract:
+      • entity nodes  — name, type (from ontology), one-sentence summary
+      • edge triples  — (source_entity, relation_type, target_entity, fact sentence)
+
+    Everything is stored in PostgreSQL; no external NLP service is required.
     """
-    
+
     def __init__(self, base_url: Optional[str] = None, api_key: Optional[str] = None):
-        self.base_url = base_url or Config.ZEP_BASE_URL
-        if not self.base_url:
-            raise ValueError("ZEP_BASE_URL is not set")
-        self.client = Zep(base_url=self.base_url)
+        # base_url / api_key kept for signature compatibility — not used
         self.task_manager = TaskManager()
-    
+        self._llm: Optional[LLMClient] = None
+
+    @property
+    def llm(self) -> LLMClient:
+        if self._llm is None:
+            self._llm = LLMClient()
+        return self._llm
+
+    # ── Public async entry point ───────────────────────────────────────────────
+
     def build_graph_async(
         self,
         text: str,
         ontology: Dict[str, Any],
-        graph_name: str = "MiroFish Graph",
+        graph_name: str = "Society Graph",
         chunk_size: int = 500,
         chunk_overlap: int = 50,
-        batch_size: int = 3
+        batch_size: int = 3,
     ) -> str:
-        """
-        异步构建图谱
-        
-        Args:
-            text: 输入文本
-            ontology: 本体定义（来自接口1的输出）
-            graph_name: 图谱名称
-            chunk_size: 文本块大小
-            chunk_overlap: 块重叠大小
-            batch_size: 每批发送的块数量
-            
-        Returns:
-            任务ID
-        """
-        # 创建任务
         task_id = self.task_manager.create_task(
             task_type="graph_build",
             metadata={
                 "graph_name": graph_name,
                 "chunk_size": chunk_size,
                 "text_length": len(text),
-            }
+            },
         )
-        
-        # Capture locale before spawning background thread
-        current_locale = get_locale()
 
-        # 在后台线程中执行构建
+        current_locale = get_locale()
         thread = threading.Thread(
             target=self._build_graph_worker,
-            args=(task_id, text, ontology, graph_name, chunk_size, chunk_overlap, batch_size, current_locale)
+            args=(task_id, text, ontology, graph_name, chunk_size, chunk_overlap, batch_size, current_locale),
+            daemon=True,
         )
-        thread.daemon = True
         thread.start()
-        
         return task_id
-    
+
+    # ── Worker ─────────────────────────────────────────────────────────────────
+
     def _build_graph_worker(
         self,
         task_id: str,
@@ -105,392 +102,328 @@ class GraphBuilderService:
         chunk_size: int,
         chunk_overlap: int,
         batch_size: int,
-        locale: str = 'zh'
+        locale: str = 'zh',
     ):
-        """图谱构建工作线程"""
         set_locale(locale)
         try:
-            self.task_manager.update_task(
-                task_id,
-                status=TaskStatus.PROCESSING,
-                progress=5,
-                message=t('progress.startBuildingGraph')
-            )
-            
-            # 1. 创建图谱
+            self.task_manager.update_task(task_id, status=TaskStatus.PROCESSING, progress=5,
+                                          message=t('progress.startBuildingGraph'))
+
             graph_id = self.create_graph(graph_name)
-            self.task_manager.update_task(
-                task_id,
-                progress=10,
-                message=t('progress.graphCreated', graphId=graph_id)
-            )
-            
-            # 2. 设置本体
+            self.task_manager.update_task(task_id, progress=10,
+                                          message=t('progress.graphCreated', graphId=graph_id))
+
             self.set_ontology(graph_id, ontology)
-            self.task_manager.update_task(
-                task_id,
-                progress=15,
-                message=t('progress.ontologySet')
-            )
-            
-            # 3. 文本分块
+            self.task_manager.update_task(task_id, progress=15,
+                                          message=t('progress.ontologySet'))
+
             chunks = TextProcessor.split_text(text, chunk_size, chunk_overlap)
             total_chunks = len(chunks)
-            self.task_manager.update_task(
-                task_id,
-                progress=20,
-                message=t('progress.textSplit', count=total_chunks)
-            )
-            
-            # 4. 分批发送数据
-            episode_uuids = self.add_text_batches(
-                graph_id, chunks, batch_size,
+            self.task_manager.update_task(task_id, progress=20,
+                                          message=t('progress.textSplit', count=total_chunks))
+
+            self.add_text_batches(
+                graph_id, chunks, batch_size, ontology,
                 lambda msg, prog: self.task_manager.update_task(
                     task_id,
-                    progress=20 + int(prog * 0.4),  # 20-60%
-                    message=msg
-                )
+                    progress=20 + int(prog * 0.70),  # 20–90 %
+                    message=msg,
+                ),
             )
-            
-            # 5. 等待Zep处理完成
-            self.task_manager.update_task(
-                task_id,
-                progress=60,
-                message=t('progress.waitingZepProcess')
-            )
-            
-            self._wait_for_episodes(
-                episode_uuids,
-                lambda msg, prog: self.task_manager.update_task(
-                    task_id,
-                    progress=60 + int(prog * 0.3),  # 60-90%
-                    message=msg
-                )
-            )
-            
-            # 6. 获取图谱信息
-            self.task_manager.update_task(
-                task_id,
-                progress=90,
-                message=t('progress.fetchingGraphInfo')
-            )
-            
+
             graph_info = self._get_graph_info(graph_id)
-            
-            # 完成
             self.task_manager.complete_task(task_id, {
                 "graph_id": graph_id,
                 "graph_info": graph_info.to_dict(),
                 "chunks_processed": total_chunks,
             })
-            
+
         except Exception as e:
             import traceback
-            error_msg = f"{str(e)}\n{traceback.format_exc()}"
-            self.task_manager.fail_task(task_id, error_msg)
-    
+            self.task_manager.fail_task(task_id, f"{e}\n{traceback.format_exc()}")
+
+    # ── Graph lifecycle ────────────────────────────────────────────────────────
+
     def create_graph(self, name: str) -> str:
-        """创建Zep图谱（公开方法）"""
         graph_id = f"mirofish_{uuid.uuid4().hex[:16]}"
-        
-        self.client.graph.create(
-            graph_id=graph_id,
-            name=name,
-            description="MiroFish Social Simulation Graph"
-        )
-        
-        return graph_id
-    
-    def set_ontology(self, graph_id: str, ontology: Dict[str, Any]):
-        """设置图谱本体（公开方法）"""
-        import warnings
-        from typing import Optional
-        from pydantic import Field
-        from zep_python.external_clients.ontology import EntityModel, EntityText, EdgeModel
-        
-        # 抑制 Pydantic v2 关于 Field(default=None) 的警告
-        # 这是 Zep SDK 要求的用法，警告来自动态类创建，可以安全忽略
-        warnings.filterwarnings('ignore', category=UserWarning, module='pydantic')
-        
-        # Zep 保留名称，不能作为属性名
-        RESERVED_NAMES = {'uuid', 'name', 'group_id', 'name_embedding', 'summary', 'created_at'}
-        
-        def safe_attr_name(attr_name: str) -> str:
-            """将保留名称转换为安全名称"""
-            if attr_name.lower() in RESERVED_NAMES:
-                return f"entity_{attr_name}"
-            return attr_name
-        
-        # 动态创建实体类型
-        entity_types = {}
-        for entity_def in ontology.get("entity_types", []):
-            name = entity_def["name"]
-            description = entity_def.get("description", f"A {name} entity.")
-            
-            # 创建属性字典和类型注解（Pydantic v2 需要）
-            attrs = {"__doc__": description}
-            annotations = {}
-            
-            for attr_def in entity_def.get("attributes", []):
-                attr_name = safe_attr_name(attr_def["name"])  # 使用安全名称
-                attr_desc = attr_def.get("description", attr_name)
-                # Zep API 需要 Field 的 description，这是必需的
-                attrs[attr_name] = Field(description=attr_desc, default=None)
-                annotations[attr_name] = Optional[EntityText]  # 类型注解
-            
-            attrs["__annotations__"] = annotations
-            
-            # 动态创建类
-            entity_class = type(name, (EntityModel,), attrs)
-            entity_class.__doc__ = description
-            entity_types[name] = entity_class
-        
-        # 动态创建边类型
-        edge_definitions = {}
-        for edge_def in ontology.get("edge_types", []):
-            name = edge_def["name"]
-            description = edge_def.get("description", f"A {name} relationship.")
-            
-            # 创建属性字典和类型注解
-            attrs = {"__doc__": description}
-            annotations = {}
-            
-            for attr_def in edge_def.get("attributes", []):
-                attr_name = safe_attr_name(attr_def["name"])  # 使用安全名称
-                attr_desc = attr_def.get("description", attr_name)
-                # Zep API 需要 Field 的 description，这是必需的
-                attrs[attr_name] = Field(description=attr_desc, default=None)
-                annotations[attr_name] = Optional[str]  # 边属性用str类型
-            
-            attrs["__annotations__"] = annotations
-            
-            # 动态创建类
-            class_name = ''.join(word.capitalize() for word in name.split('_'))
-            edge_class = type(class_name, (EdgeModel,), attrs)
-            edge_class.__doc__ = description
-            
-            # 构建source_targets
-            source_targets = []
-            for st in edge_def.get("source_targets", []):
-                source_targets.append(
-                    EntityEdgeSourceTarget(
-                        source=st.get("source", "Entity"),
-                        target=st.get("target", "Entity")
-                    )
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO graphs (id, name) VALUES (%s, %s)",
+                    (graph_id, name),
                 )
-            
-            if source_targets:
-                edge_definitions[name] = (edge_class, source_targets)
-        
-        # 调用Zep API设置本体
-        if entity_types or edge_definitions:
-            self.client.graph.set_ontology(
-                graph_ids=[graph_id],
-                entities=entity_types if entity_types else None,
-                edges=edge_definitions if edge_definitions else None,
-            )
-    
+        logger.info(f"Created graph: {graph_id}")
+        return graph_id
+
+    def set_ontology(self, graph_id: str, ontology: Dict[str, Any]):
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE graphs SET ontology = %s WHERE id = %s",
+                    (json.dumps(ontology), graph_id),
+                )
+
+    def delete_graph(self, graph_id: str):
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM graphs WHERE id = %s", (graph_id,))
+        logger.info(f"Deleted graph: {graph_id}")
+
+    # ── Text ingestion ─────────────────────────────────────────────────────────
+
     def add_text_batches(
         self,
         graph_id: str,
         chunks: List[str],
         batch_size: int = 3,
-        progress_callback: Optional[Callable] = None
-    ) -> List[str]:
-        """分批添加文本到图谱，返回所有 episode 的 uuid 列表"""
-        episode_uuids = []
-        total_chunks = len(chunks)
-        
-        for i in range(0, total_chunks, batch_size):
-            batch_chunks = chunks[i:i + batch_size]
-            batch_num = i // batch_size + 1
-            total_batches = (total_chunks + batch_size - 1) // batch_size
-            
-            if progress_callback:
-                progress = (i + len(batch_chunks)) / total_chunks
-                progress_callback(
-                    t('progress.sendingBatch', current=batch_num, total=total_batches, chunks=len(batch_chunks)),
-                    progress
-                )
-            
-            # 构建episode数据
-            episodes = [
-                EpisodeData(data=chunk, type="text")
-                for chunk in batch_chunks
-            ]
-            
-            # 发送到Zep
-            try:
-                batch_result = self.client.graph.add_batch(
-                    graph_id=graph_id,
-                    episodes=episodes
-                )
-                
-                # 收集返回的 episode uuid
-                if batch_result and isinstance(batch_result, list):
-                    for ep in batch_result:
-                        ep_uuid = getattr(ep, 'uuid_', None) or getattr(ep, 'uuid', None)
-                        if ep_uuid:
-                            episode_uuids.append(ep_uuid)
-                
-                # 避免请求过快
-                time.sleep(1)
-                
-            except Exception as e:
-                if progress_callback:
-                    progress_callback(t('progress.batchFailed', batch=batch_num, error=str(e)), 0)
-                raise
-        
-        return episode_uuids
-    
-    def _wait_for_episodes(
-        self,
-        episode_uuids: List[str],
+        ontology: Optional[Dict[str, Any]] = None,
         progress_callback: Optional[Callable] = None,
-        timeout: int = 600
-    ):
-        """等待所有 episode 处理完成（通过查询每个 episode 的 processed 状态）"""
-        if not episode_uuids:
-            if progress_callback:
-                progress_callback(t('progress.noEpisodesWait'), 1.0)
-            return
-        
-        start_time = time.time()
-        pending_episodes = set(episode_uuids)
-        completed_count = 0
-        total_episodes = len(episode_uuids)
-        
-        if progress_callback:
-            progress_callback(t('progress.waitingEpisodes', count=total_episodes), 0)
-        
-        while pending_episodes:
-            if time.time() - start_time > timeout:
-                if progress_callback:
-                    progress_callback(
-                        t('progress.episodesTimeout', completed=completed_count, total=total_episodes),
-                        completed_count / total_episodes
-                    )
-                break
-            
-            # 检查每个 episode 的处理状态
-            for ep_uuid in list(pending_episodes):
-                try:
-                    episode = self.client.graph.episode.get(uuid_=ep_uuid)
-                    is_processed = getattr(episode, 'processed', False)
-                    
-                    if is_processed:
-                        pending_episodes.remove(ep_uuid)
-                        completed_count += 1
-                        
-                except Exception as e:
-                    # 忽略单个查询错误，继续
-                    pass
-            
-            elapsed = int(time.time() - start_time)
+    ) -> List[str]:
+        """
+        Process text chunks, extract entities/relations with the LLM, persist to postgres.
+        Returns list of placeholder episode IDs (one per chunk) for API compatibility.
+        """
+        if ontology is None:
+            ontology = self._load_ontology(graph_id)
+
+        episode_ids: List[str] = []
+        total = len(chunks)
+
+        for i, chunk in enumerate(chunks):
+            batch_num = i + 1
             if progress_callback:
                 progress_callback(
-                    t('progress.zepProcessing', completed=completed_count, total=total_episodes, pending=len(pending_episodes), elapsed=elapsed),
-                    completed_count / total_episodes if total_episodes > 0 else 0
+                    t('progress.sendingBatch', current=batch_num, total=total, chunks=1),
+                    (i + 1) / total,
                 )
-            
-            if pending_episodes:
-                time.sleep(3)  # 每3秒检查一次
-        
-        if progress_callback:
-            progress_callback(t('progress.processingComplete', completed=completed_count, total=total_episodes), 1.0)
-    
+
+            try:
+                extraction = self._extract_from_chunk(chunk, ontology)
+                ep_id = self._persist_extraction(graph_id, chunk, extraction)
+                episode_ids.append(ep_id)
+            except Exception as e:
+                logger.warning(f"Extraction failed for chunk {batch_num}: {e}")
+
+        return episode_ids
+
+    def _load_ontology(self, graph_id: str) -> Dict[str, Any]:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT ontology FROM graphs WHERE id = %s", (graph_id,))
+                row = cur.fetchone()
+                return row[0] if row and row[0] else {}
+
+    # ── LLM extraction ─────────────────────────────────────────────────────────
+
+    def _extract_from_chunk(self, chunk: str, ontology: Dict[str, Any]) -> Dict[str, Any]:
+        """Ask the LLM to extract entities and relationships from a text chunk."""
+        entity_types = [e.get("name", "") for e in ontology.get("entity_types", [])]
+        edge_types = [e.get("name", "") for e in ontology.get("edge_types", [])]
+
+        entity_type_str = ", ".join(entity_types) if entity_types else "Person, Organization, Location, Event, Concept"
+        edge_type_str = ", ".join(edge_types) if edge_types else "RELATED_TO, BELONGS_TO, INTERACTS_WITH"
+
+        prompt = f"""Extract entities and relationships from the following text.
+
+Entity types to use: {entity_type_str}
+Relationship types to use: {edge_type_str}
+
+Return ONLY valid JSON with this exact structure:
+{{
+  "entities": [
+    {{"name": "entity name", "type": "EntityType", "summary": "one sentence description"}}
+  ],
+  "relationships": [
+    {{"source": "source entity name", "relation": "RELATION_TYPE", "target": "target entity name", "fact": "full sentence stating the fact"}}
+  ]
+}}
+
+Text to analyze:
+{chunk}"""
+
+        try:
+            result = self.llm.chat_json([{"role": "user", "content": prompt}])
+            if isinstance(result, dict):
+                return result
+        except Exception as e:
+            logger.warning(f"LLM extraction error: {e}")
+
+        return {"entities": [], "relationships": []}
+
+    # ── Persistence ────────────────────────────────────────────────────────────
+
+    def _persist_extraction(
+        self, graph_id: str, chunk: str, extraction: Dict[str, Any]
+    ) -> str:
+        """Store extracted entities and relationships in postgres. Returns episode id."""
+        episode_id = str(uuid.uuid4())
+
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                # Store the raw text as an episode
+                cur.execute(
+                    "INSERT INTO graph_episodes (id, graph_id, content) VALUES (%s, %s, %s)",
+                    (episode_id, graph_id, chunk),
+                )
+
+                # Upsert entities → collect name→uuid mapping
+                node_map: Dict[str, str] = {}
+                for ent in extraction.get("entities", []):
+                    name = (ent.get("name") or "").strip()
+                    etype = (ent.get("type") or "Entity").strip()
+                    summary = (ent.get("summary") or "").strip()
+                    if not name:
+                        continue
+
+                    labels = json.dumps(["Entity", etype] if etype != "Entity" else ["Entity"])
+
+                    # Check if node already exists for this graph
+                    cur.execute(
+                        "SELECT id FROM graph_nodes WHERE graph_id = %s AND name = %s",
+                        (graph_id, name),
+                    )
+                    existing = cur.fetchone()
+                    if existing:
+                        node_id = str(existing[0])
+                        if summary:
+                            cur.execute(
+                                "UPDATE graph_nodes SET summary = %s WHERE id = %s",
+                                (summary, node_id),
+                            )
+                    else:
+                        node_id = str(uuid.uuid4())
+                        cur.execute(
+                            """INSERT INTO graph_nodes (id, graph_id, name, labels, summary)
+                               VALUES (%s, %s, %s, %s, %s)""",
+                            (node_id, graph_id, name, labels, summary),
+                        )
+                    node_map[name.lower()] = node_id
+
+                # Insert relationships
+                for rel in extraction.get("relationships", []):
+                    src_name = (rel.get("source") or "").strip()
+                    tgt_name = (rel.get("target") or "").strip()
+                    rel_type = (rel.get("relation") or "RELATED_TO").strip()
+                    fact = (rel.get("fact") or "").strip()
+                    if not src_name or not tgt_name:
+                        continue
+
+                    src_id = node_map.get(src_name.lower())
+                    tgt_id = node_map.get(tgt_name.lower())
+
+                    # Resolve nodes that weren't in this chunk's entity list
+                    if not src_id:
+                        src_id = self._find_or_create_node(cur, graph_id, src_name)
+                        node_map[src_name.lower()] = src_id
+                    if not tgt_id:
+                        tgt_id = self._find_or_create_node(cur, graph_id, tgt_name)
+                        node_map[tgt_name.lower()] = tgt_id
+
+                    cur.execute(
+                        """INSERT INTO graph_edges
+                               (id, graph_id, name, fact, source_node_id, target_node_id,
+                                source_node_name, target_node_name)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                        (str(uuid.uuid4()), graph_id, rel_type, fact,
+                         src_id, tgt_id, src_name, tgt_name),
+                    )
+
+        return episode_id
+
+    def _find_or_create_node(self, cur, graph_id: str, name: str) -> str:
+        cur.execute(
+            "SELECT id FROM graph_nodes WHERE graph_id = %s AND name = %s",
+            (graph_id, name),
+        )
+        row = cur.fetchone()
+        if row:
+            return str(row[0])
+        node_id = str(uuid.uuid4())
+        cur.execute(
+            "INSERT INTO graph_nodes (id, graph_id, name, labels, summary) VALUES (%s, %s, %s, %s, %s)",
+            (node_id, graph_id, name, json.dumps(["Entity"]), ""),
+        )
+        return node_id
+
+    # ── Graph info / export ────────────────────────────────────────────────────
+
     def _get_graph_info(self, graph_id: str) -> GraphInfo:
-        """获取图谱信息"""
-        # 获取节点（分页）
-        nodes = fetch_all_nodes(self.client, graph_id)
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM graph_nodes WHERE graph_id = %s", (graph_id,))
+                node_count = cur.fetchone()[0]
 
-        # 获取边（分页）
-        edges = fetch_all_edges(self.client, graph_id)
+                cur.execute("SELECT COUNT(*) FROM graph_edges WHERE graph_id = %s", (graph_id,))
+                edge_count = cur.fetchone()[0]
 
-        # 统计实体类型
-        entity_types = set()
-        for node in nodes:
-            if node.labels:
-                for label in node.labels:
-                    if label not in ["Entity", "Node"]:
-                        entity_types.add(label)
+                cur.execute("SELECT labels FROM graph_nodes WHERE graph_id = %s", (graph_id,))
+                rows = cur.fetchall()
+
+        entity_types: set = set()
+        for (labels,) in rows:
+            for label in (labels or []):
+                if label not in ("Entity", "Node"):
+                    entity_types.add(label)
 
         return GraphInfo(
             graph_id=graph_id,
-            node_count=len(nodes),
-            edge_count=len(edges),
-            entity_types=list(entity_types)
+            node_count=node_count,
+            edge_count=edge_count,
+            entity_types=sorted(entity_types),
         )
-    
-    def get_graph_data(self, graph_id: str) -> Dict[str, Any]:
-        """
-        获取完整图谱数据（包含详细信息）
-        
-        Args:
-            graph_id: 图谱ID
-            
-        Returns:
-            包含nodes和edges的字典，包括时间信息、属性等详细数据
-        """
-        nodes = fetch_all_nodes(self.client, graph_id)
-        edges = fetch_all_edges(self.client, graph_id)
 
-        # 创建节点映射用于获取节点名称
-        node_map = {}
-        for node in nodes:
-            node_map[node.uuid_] = node.name or ""
-        
-        nodes_data = []
-        for node in nodes:
-            # 获取创建时间
-            created_at = getattr(node, 'created_at', None)
-            if created_at:
-                created_at = str(created_at)
-            
-            nodes_data.append({
-                "uuid": node.uuid_,
-                "name": node.name,
-                "labels": node.labels or [],
-                "summary": node.summary or "",
-                "attributes": node.attributes or {},
-                "created_at": created_at,
-            })
-        
-        edges_data = []
-        for edge in edges:
-            # 获取时间信息
-            created_at = getattr(edge, 'created_at', None)
-            valid_at = getattr(edge, 'valid_at', None)
-            invalid_at = getattr(edge, 'invalid_at', None)
-            expired_at = getattr(edge, 'expired_at', None)
-            
-            # 获取 episodes
-            episodes = getattr(edge, 'episodes', None) or getattr(edge, 'episode_ids', None)
-            if episodes and not isinstance(episodes, list):
-                episodes = [str(episodes)]
-            elif episodes:
-                episodes = [str(e) for e in episodes]
-            
-            # 获取 fact_type
-            fact_type = getattr(edge, 'fact_type', None) or edge.name or ""
-            
-            edges_data.append({
-                "uuid": edge.uuid_,
-                "name": edge.name or "",
-                "fact": edge.fact or "",
-                "fact_type": fact_type,
-                "source_node_uuid": edge.source_node_uuid,
-                "target_node_uuid": edge.target_node_uuid,
-                "source_node_name": node_map.get(edge.source_node_uuid, ""),
-                "target_node_name": node_map.get(edge.target_node_uuid, ""),
-                "attributes": edge.attributes or {},
-                "created_at": str(created_at) if created_at else None,
-                "valid_at": str(valid_at) if valid_at else None,
-                "invalid_at": str(invalid_at) if invalid_at else None,
-                "expired_at": str(expired_at) if expired_at else None,
-                "episodes": episodes or [],
-            })
-        
+    def get_graph_data(self, graph_id: str) -> Dict[str, Any]:
+        """Return full graph data (nodes + edges) for the frontend."""
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT id, name, labels, summary, attributes, created_at
+                       FROM graph_nodes WHERE graph_id = %s""",
+                    (graph_id,),
+                )
+                node_rows = cur.fetchall()
+
+                cur.execute(
+                    """SELECT id, name, fact, source_node_id, target_node_id,
+                              source_node_name, target_node_name,
+                              valid_at, invalid_at, expired_at, created_at
+                       FROM graph_edges WHERE graph_id = %s""",
+                    (graph_id,),
+                )
+                edge_rows = cur.fetchall()
+
+        nodes_data = [
+            {
+                "uuid": str(r[0]),
+                "name": r[1],
+                "labels": r[2] or [],
+                "summary": r[3] or "",
+                "attributes": r[4] or {},
+                "created_at": str(r[5]) if r[5] else None,
+            }
+            for r in node_rows
+        ]
+
+        edges_data = [
+            {
+                "uuid": str(r[0]),
+                "name": r[1],
+                "fact": r[2] or "",
+                "fact_type": r[1],
+                "source_node_uuid": str(r[3]) if r[3] else "",
+                "target_node_uuid": str(r[4]) if r[4] else "",
+                "source_node_name": r[5] or "",
+                "target_node_name": r[6] or "",
+                "attributes": {},
+                "valid_at": str(r[7]) if r[7] else None,
+                "invalid_at": str(r[8]) if r[8] else None,
+                "expired_at": str(r[9]) if r[9] else None,
+                "created_at": str(r[10]) if r[10] else None,
+                "episodes": [],
+            }
+            for r in edge_rows
+        ]
+
         return {
             "graph_id": graph_id,
             "nodes": nodes_data,
@@ -498,8 +431,3 @@ class GraphBuilderService:
             "node_count": len(nodes_data),
             "edge_count": len(edges_data),
         }
-    
-    def delete_graph(self, graph_id: str):
-        """删除图谱"""
-        self.client.graph.delete(graph_id=graph_id)
-

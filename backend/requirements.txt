@@ -18,9 +18,8 @@ anthropic>=0.28.0
 # AWS Bedrock
 boto3>=1.34.0
 
-# ── Zep self-hosted memory (Community Edition — no cloud key needed) ──────────
-# The zep-python client works with both the cloud and self-hosted server.
-zep-python>=2.0.0
+# ── PostgreSQL + pgvector — knowledge graph & agent memory ───────────────────
+psycopg2-binary>=2.9.0
 
 # ── OASIS multi-agent simulation ──────────────────────────────────────────────
 camel-oasis==0.2.5
