@@ -1,0 +1,20 @@
+store:
+  type: postgres
+  postgres:
+    dsn: "postgresql://zep:zep@zep-db:5432/zep"
+
+llm:
+  service: openai
+  model: gpt-3.5-turbo
+  openai:
+    endpoint: "http://ollama:11434/v1"
+
+extractors:
+  documents:
+    embeddings:
+      enabled: true
+      dimensions: 768
+      service: openai
+
+memory:
+  message_window: 12

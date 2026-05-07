@@ -29,13 +29,10 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    volumes:
+      - ./zep-config.yaml:/app/config.yaml
     environment:
-      - ZEP_STORE_TYPE=postgres
-      - ZEP_STORE_POSTGRES_DSN=postgresql://zep:zep@zep-db:5432/zep
-      # Point Zep at the local Ollama embedding server — no OpenAI needed
       - ZEP_OPENAI_API_KEY=ollama
-      - ZEP_OPENAI_ENDPOINT=http://ollama:11434/v1
-      - ZEP_MEMORY_MESSAGE_WINDOW=12
     depends_on:
       zep-db:
         condition: service_healthy
