@@ -1,7 +1,7 @@
 store:
   type: postgres
   postgres:
-    dsn: "postgresql://zep:zep@zep-db:5432/zep"
+    dsn: "postgresql://zep:zep@zep-db:5432/zep?sslmode=disable"
 
 llm:
   service: openai
