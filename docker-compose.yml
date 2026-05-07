@@ -11,6 +11,8 @@ services:
     image: ghcr.io/getzep/zep:0.27.2
     container_name: zep
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     environment:
