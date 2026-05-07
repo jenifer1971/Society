@@ -35,5 +35,14 @@ class GeminiClient(BaseLLMClient):
         )
         if response_format:
             kwargs["response_format"] = response_format
-        response = self.client.chat.completions.create(**kwargs)
+        try:
+            response = self.client.chat.completions.create(**kwargs)
+        except Exception as e:
+            # Gemini may reject response_format on some models — retry without it
+            if response_format and "response_format" in str(e).lower() or "400" in str(e):
+                kwargs.pop("response_format", None)
+                response = self.client.chat.completions.create(**kwargs)
+            else:
+                raise
         return self._strip_think_tags(response.choices[0].message.content)
+
