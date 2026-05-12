@@ -17,8 +17,10 @@ COPY backend/pyproject.toml ./backend/
 # Install Node deps
 RUN npm ci && npm ci --prefix frontend
 
-# Install pinned Python deps (nvidia/triton already excluded in requirements.txt).
-RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
+# Install pinned Python deps. torch is CPU-only (+cpu wheel) — no nvidia/CUDA packages.
+RUN pip install --no-cache-dir \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        -r /tmp/requirements.txt && \
     pip install --no-cache-dir -e backend/ && \
     pip cache purge
 

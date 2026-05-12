@@ -377,7 +377,7 @@ tiktoken==0.7.0
     # via camel-ai
 tokenizers==0.22.1
     # via transformers
-torch==2.9.1
+torch==2.9.1+cpu
     # via sentence-transformers
 tqdm==4.67.1
     # via
